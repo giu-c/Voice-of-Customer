@@ -1,0 +1,7 @@
+streamlit>=1.51
+pandas
+numpy
+scikit-learn>=1.3
+umap-learn
+plotly
+openai
