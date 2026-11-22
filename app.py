@@ -116,6 +116,11 @@ DISTINZIONE_MINIMA_MIN = 0.10
 DISTINZIONE_MINIMA = 0.20
 DISTINZIONE_MINIMA_MAX = 0.30
 
+# Dimensioni (px) delle sfere delle etichette nella mappa 3D (scalate sul massimo del dataset)
+DIM_SFERA_MIN = 20       # etichetta meno citata
+DIM_SFERA_MAX = 60      # etichetta più citata
+ESPONENTE_SFERA = 0.65  # 0.5 = radice quadrata (più uniforme), 1.0 = proporzionale (differenze forti)
+
 # Modello di embedding (via OpenRouter)
 MODELLO_CLOUD = "google/gemini-embedding-2"
 DIM_CLOUD = 3072   # dimensioni del vettore (3072 = il massimo; da 128 in su)
@@ -128,7 +133,8 @@ PREFISSO_CLOUD = "task: clustering | query: "
 
 # I nomi dei cluster li scrive il modello di llm.py (lo stesso di main.py)
 FILE_NOMI = "cache_cluster_names.json" # nomi già ottenuti, per non richiederli ogni volta
-ETICHETTE_PER_NOME = 30                # etichette (le più vicine al centro) mostrate al modello per ogni cluster
+ETICHETTE_PER_NOME = 10                # etichette (le più vicine al centro) mostrate al modello per ogni cluster
+MENZIONI_PER_NOME = 30                 # menzioni neutre stratificate mostrate al modello per ogni cluster
 RAGIONAMENTO_NOMI = False              # ragionamento del modello: True/False (vedi llm.py)
 
 # Analisi con l'AI al clic su un cluster o su una sua parte
@@ -637,9 +643,10 @@ def proietta_umap(vettori, n_vicini, min_dist, spread, cluster_id=None):
 # NOMI DEI CLUSTER SCRITTI DAL MODELLO LINGUISTICO
 # ============================================================
 # Il nome provvisorio di un cluster è la sottocategoria della sua etichetta più citata.
-# Qui invece un modello linguistico legge le etichette più rappresentative del cluster
-# (le più vicine al suo centroide, con il numero di menzioni) e scrive un nome che ne
-# riassume il tema, sapendo di che recensioni si tratta (il contesto di context.py).
+# Qui invece un modello linguistico legge sia le etichette più rappresentative del cluster
+# (le più vicine al suo centroide, con il numero di menzioni) sia un campione stratificato
+# e deterministico di menzioni neutre centrali, e scrive un nome che ne riassume il tema,
+# sapendo di che recensioni si tratta (il contesto di context.py).
 # Si fa UNA sola chiamata per tutti i cluster (così i nomi non si ripetono tra loro)
 # e i nomi ottenuti restano su disco: un cluster già visto non viene richiesto di nuovo.
 
@@ -660,14 +667,91 @@ SCHEMA_NOMI = {
 }
 
 # Parte tecnica (cosa riceve il modello e forma della risposta); le regole sono in context.py
-ISTRUZIONI_NOMI = llm.con_contesto("""Ricevi alcuni cluster di etichette assegnate alle opinioni di recensioni di clienti. Ogni etichetta ha la forma "categoria > sottocategoria" ed è seguita dal numero di opinioni che la usano. Di ogni cluster vedi le etichette più rappresentative, dalla più vicina al centro del cluster.
+ISTRUZIONI_NOMI = llm.con_contesto("""Ricevi alcuni cluster tematici estratti da recensioni di clienti. Per ogni cluster vedi:
+1. Le etichette più rappresentative ("categoria > sottocategoria"), ordinate dalla più vicina al centro del cluster, con il numero di opinioni.
+2. Un elenco rappresentativo di menzioni neutre dei clienti appartenenti a quel cluster (stratificate sulle etichette e ordinate per centralità, con eventuale conteggio se ripetute).
 
-Per ogni cluster scrivi un nome che riassuma il tema comune alle sue etichette. Restituisci un oggetto JSON con la chiave "nomi": un elemento per cluster, con "id" (il numero del cluster) e "nome".
+Per ogni cluster scrivi un nome che riassuma il tema comune alle sue etichette e menzioni. Restituisci un oggetto JSON con la chiave "nomi": un elemento per cluster, con "id" (il numero del cluster) e "nome".
 
 """ + NOMI_REGOLE)
 
 
-def nomi_dal_modello(mappa_etichette, nomi_calcolati, chiave):
+def menzioni_stratificate_cluster(df_cluster, vet_etichette, pesi_etichette,
+                                  vet_neutre, pos_neutra, n_max=MENZIONI_PER_NOME,
+                                  soglia_simili=0.85):
+    """
+    Estrae fino a n_max menzioni neutre stratificando proporzionalmente sulle etichette
+    del cluster e scegliendo, in ogni strato, le più centrali e non ridondanti.
+    """
+    if len(vet_neutre) == 0:
+        return []
+
+    centroide = np.average(vet_etichette, axis=0, weights=pesi_etichette)
+    centroide /= max(np.linalg.norm(centroide), 1e-12)
+
+    sub = df_cluster[df_cluster["menzione_neutra"] != ""]
+    if sub.empty:
+        return []
+
+    # Strati = etichette del cluster, ordinate per numero di menzioni
+    pesi_strati = sub["etichetta"].value_counts()
+    tot_menzioni = pesi_strati.sum()
+
+    # Allocazione proporzionale dei n_max slot (metodo largest remainder)
+    quote_esatte = pesi_strati * (n_max / tot_menzioni)
+    slot = np.floor(quote_esatte).astype(int)
+    resti = quote_esatte - slot
+    mancanti = int(n_max - slot.sum())
+    if mancanti > 0:
+        slot.iloc[np.argsort(-resti.to_numpy())[:mancanti]] += 1
+
+    scelte, vettori_scelti = [], []
+
+    # Primo giro: rispetta gli slot proporzionali di ogni etichetta
+    for etich, k in slot.items():
+        if k <= 0:
+            continue
+        conteggi = sub.loc[sub["etichetta"] == etich, "menzione_neutra"].value_counts()
+        testi = conteggi.index.tolist()
+        matrice = vet_neutre[[pos_neutra[t] for t in testi]]
+        punteggi = (matrice @ centroide) * (1.0 + np.log1p(conteggi.to_numpy()))
+
+        prese = 0
+        for idx in np.argsort(-punteggi):
+            v = matrice[idx]
+            if vettori_scelti and np.max(np.vstack(vettori_scelti) @ v) > soglia_simili:
+                continue
+            c = int(conteggi.iloc[idx])
+            scelte.append(f"{testi[idx]} ({c})" if c > 1 else testi[idx])
+            vettori_scelti.append(v)
+            prese += 1
+            if prese >= k or len(scelte) >= n_max:
+                break
+
+    # Se il filtro anti-duplicati ha lasciato slot liberi, riempi con le migliori rimanenti del cluster
+    if len(scelte) < n_max:
+        gia_usate = {s.rsplit(" (", 1)[0] for s in scelte}
+        conteggi_all = sub["menzione_neutra"].value_counts()
+        testi_all = [t for t in conteggi_all.index if t not in gia_usate]
+        if testi_all:
+            matrice_all = vet_neutre[[pos_neutra[t] for t in testi_all]]
+            c_all = np.array([conteggi_all[t] for t in testi_all])
+            punteggi_all = (matrice_all @ centroide) * (1.0 + np.log1p(c_all))
+            for idx in np.argsort(-punteggi_all):
+                v = matrice_all[idx]
+                if vettori_scelti and np.max(np.vstack(vettori_scelti) @ v) > soglia_simili:
+                    continue
+                c = int(c_all[idx])
+                scelte.append(f"{testi_all[idx]} ({c})" if c > 1 else testi_all[idx])
+                vettori_scelti.append(v)
+                if len(scelte) >= n_max:
+                    break
+
+    return scelte
+
+
+def nomi_dal_modello(mappa_etichette, nomi_calcolati, chiave, df_dati,
+                     vettori_etichette, pesi_etichette, vettori_neutre, pos_neutra):
     """
     Restituisce i nomi dei cluster scritti dal modello (quelli provvisori dove non risponde).
     'mappa_etichette' ha una riga per etichetta, con le colonne etichetta, menzioni,
@@ -681,16 +765,31 @@ def nomi_dal_modello(mappa_etichette, nomi_calcolati, chiave):
         except Exception:
             memoria = {}
 
-    # Per ogni cluster: le etichette più vicine al centroide, con le menzioni. Questo testo,
-    # insieme al contesto, fa anche da "impronta" del cluster: se non cambiano, il nome
-    # già ottenuto viene riusato senza chiamare di nuovo il modello.
+    # Per ogni cluster: le etichette più vicine al centroide e le menzioni neutre stratificate.
+    # Questo testo, insieme al contesto, fa da "impronta" del cluster: se non cambiano,
+    # il nome già ottenuto viene riusato senza chiamare di nuovo il modello.
     impronta_contesto = hashlib.md5(CONTESTO.strip().encode("utf-8")).hexdigest()[:8]
     elenchi = {}
     for numero, gruppo in mappa_etichette[mappa_etichette["cluster_id"] != -1].groupby("cluster_id"):
         if len(gruppo) < 2:
             continue  # una sola etichetta: il nome è l'etichetta stessa, inutile chiederlo
         piu_vicine = gruppo.sort_values("somiglianza_al_centro", ascending=False).head(ETICHETTE_PER_NOME)
-        elenchi[numero] = "\n".join(f"- {r.etichetta} ({r.menzioni})" for r in piu_vicine.itertuples())
+        righe_etichette = "\n".join(f"- {r.etichetta} ({r.menzioni})" for r in piu_vicine.itertuples())
+
+        mask_cluster = (mappa_etichette["cluster_id"] == numero).to_numpy()
+        menzioni_top = menzioni_stratificate_cluster(
+            df_dati[df_dati["etichetta"].isin(gruppo["etichetta"])],
+            vettori_etichette[mask_cluster],
+            pesi_etichette[mask_cluster],
+            vettori_neutre,
+            pos_neutra,
+        )
+        blocco = f"Etichette:\n{righe_etichette}"
+        if menzioni_top:
+            righe_menzioni = "\n".join(f"- {m}" for m in menzioni_top)
+            blocco += f"\nMenzioni rappresentative:\n{righe_menzioni}"
+        elenchi[numero] = blocco
+
     impronte = {n: f"[{impronta_contesto}]\n{testo}" for n, testo in elenchi.items()}
 
     mancanti = [n for n in elenchi if impronte[n] not in memoria]
@@ -815,7 +914,7 @@ def hover_etichetta(r):
     return "<br>".join([
         in_grande(f"<b>🪐 {html.escape(r.tema_cluster)}</b>", HOVER_DIM_TITOLO),
         SEPARATORE_HOVER,
-        in_grande(f"🏷️ Etichetta: <b>{html.escape(r.etichetta)}</b>", HOVER_DIM_VOCE),
+        in_grande(f"🛰️ Satellite: <b>{html.escape(r.etichetta)}</b>", HOVER_DIM_VOCE),
         in_grande(f"🗣️ Menzioni: <b>{r.menzioni}</b>", HOVER_DIM_VOCE),
         riga_sentiment_hover(r.positivi, r.negativi, r.neutri, r.non_deducibili),
         f"⚖️ Saldo sentiment: <b>{saldo:+.0%}</b>",
@@ -836,7 +935,14 @@ def punti_della_mappa(df):
         non_deducibili=("sentiment", lambda s: (s == "Non deducibile").sum()),
         esempi=("frammento", lambda s: esempi_hover(s, 3, 95)),
     ).reset_index()
-    p["dimensione"] = np.clip(6 + 4 * np.sqrt(p["menzioni"]), 6, 34)
+
+    min_m, max_m = p["menzioni"].min(), p["menzioni"].max()
+    if max_m > min_m:
+        quota = ((p["menzioni"] - min_m) / (max_m - min_m)) ** ESPONENTE_SFERA
+        p["dimensione"] = DIM_SFERA_MIN + quota * (DIM_SFERA_MAX - DIM_SFERA_MIN)
+    else:
+        p["dimensione"] = (DIM_SFERA_MIN + DIM_SFERA_MAX) / 2
+
     p["hover"] = [hover_etichetta(r) for r in p.itertuples()]
     return p
 
@@ -896,7 +1002,7 @@ def crea_mappa_3d(punti, colori):
             "hover": "<br>".join([
                 in_grande(f"<b>🪐 {html.escape(gruppo['tema_cluster'].iloc[0])}</b>", HOVER_DIM_TITOLO),
                 SEPARATORE_HOVER,
-                in_grande(f"🏷️ Etichette: <b>{len(gruppo)}</b>", HOVER_DIM_VOCE),
+                in_grande(f"🛰️ Satellite: <b>{len(gruppo)}</b>", HOVER_DIM_VOCE),
                 in_grande(f"🗣️ Menzioni: <b>{gruppo['menzioni'].sum()}</b>", HOVER_DIM_VOCE),
                 riga_sentiment_hover(gruppo["positivi"].sum(), gruppo["negativi"].sum(),
                                      gruppo["neutri"].sum(), gruppo["non_deducibili"].sum()),
@@ -1129,7 +1235,7 @@ def crea_torta_quote(sorgente):
 
     hover = [
         "<br>".join([
-            in_grande(f"<b>🏷️ {html.escape(r.etichetta)}</b>", HOVER_DIM_TITOLO),
+            in_grande(f"<b>🛰️ {html.escape(r.etichetta)}</b>", HOVER_DIM_TITOLO),
             SEPARATORE_HOVER,
             in_grande(f"{EMOJI_SENTIMENT[r.sentiment]} {r.sentiment}: <b>{r.menzioni}</b> menzioni", HOVER_DIM_VOCE),
             f"<b>{r.menzioni / tot_s:.0%}</b> della fetta «{r.sentiment}» · <b>{r.menzioni / totale:.0%}</b> del totale",
@@ -1914,11 +2020,13 @@ if not testi_neutre:
     peso_menzioni = 0.0  # senza menzioni neutre il cursore resta disattivato: solo etichette
 
 vettori = tutti[:len(testi_etichette)]
+vettori_neutre = tutti[len(testi_etichette):]
+posizione_neutra = {t: i for i, t in enumerate(testi_neutre)}
+
 if testi_neutre and peso_menzioni > 0:
     posizione_etichetta = {t: i for i, t in enumerate(testi_etichette)}
-    posizione_neutra = {t: i for i, t in enumerate(testi_neutre)}
     vettori = mescola_con_menzioni(
-        vettori, tutti[len(testi_etichette):],
+        vettori, vettori_neutre,
         con_neutra["etichetta"].map(posizione_etichetta).to_numpy(),
         con_neutra["menzione_neutra"].map(posizione_neutra).to_numpy(),
         peso_menzioni,
@@ -2027,7 +2135,10 @@ mappa_etichette = pd.DataFrame({
 if (cluster_id != -1).any():
     try:
         with st.spinner("✨ Il modello sta dando un nome ai cluster..."):
-            nomi_cluster = nomi_dal_modello(mappa_etichette, nomi_cluster, chiave)
+            nomi_cluster = nomi_dal_modello(
+                mappa_etichette, nomi_cluster, chiave, df,
+                vettori, pesi, vettori_neutre, posizione_neutra,
+            )
     except Exception as errore:
         st.sidebar.warning(f"Nomi dal modello non disponibili ({errore}): uso quelli provvisori.")
 mappa_etichette["tema_cluster"] = mappa_etichette["cluster_id"].map(nomi_cluster)
@@ -2159,7 +2270,7 @@ riquadro_guida(
     "del cluster. <b>Clicca</b> su una sfera per l'analisi con l'AI ✨. Conta chi sta vicino a chi: le distanze "
     "tra costellazioni lontane sono solo indicative.",
 )
-clic =grafico_cliccabile(crea_mappa_3d(punti_della_mappa(df_filtrato), colori), "mappa_3d")
+clic = grafico_cliccabile(crea_mappa_3d(punti_della_mappa(df_filtrato), colori), "mappa_3d")
 
 # --- 7. Grafici per cluster ----------------------------------
 st.subheader("📊 I cluster a confronto")
@@ -2185,7 +2296,7 @@ with scheda_priorita:
         "punti di forza da difendere. <b>A sinistra</b>: temi di nicchia. Trascina per ruotare, passa il mouse "
         "per i dettagli, <b>clicca</b> su una sfera per l'analisi del cluster con l'AI ✨.",
     )
-    clic =grafico_cliccabile(crea_priorita_3d(riepilogo), "priorita_3d") or clic
+    clic = grafico_cliccabile(crea_priorita_3d(riepilogo), "priorita_3d") or clic
 
 with scheda_bilancio:
     barre = df_filtrato.groupby(["tema_cluster", "sentiment"]).size().reset_index(name="menzioni")
