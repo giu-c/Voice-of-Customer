@@ -1860,7 +1860,7 @@ def qualita_per_cluster(distanze, cluster_id, pesi, mappa):
 # PAGINA
 # ============================================================
 
-st.title("🗣️​ Voice of Customer: costellazioni semantiche")
+st.title("🗣️​ Voice of Customers: costellazioni semantiche")
 
 # --- 1. Dati -------------------------------------------------
 file_dati = FILE_RISULTATI
