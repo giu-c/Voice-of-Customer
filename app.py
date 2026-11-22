@@ -98,7 +98,7 @@ SPAZIO_UMAP = "Coordinate UMAP 3D (euclidea)"
 SPAZIO_PREDEFINITO = SPAZIO_UMAP
 
 PARAMETRI_HDBSCAN = [(campioni, selezione) for campioni in (1, 2) for selezione in ("eom", "leaf")]
-HDBSCAN_TUNING_PREDEFINITO = 0
+HDBSCAN_TUNING_PREDEFINITO = 15
 
 # 1) % massima di menzioni che finisce tra gli outlier (taglio della coda dei micro-cluster)
 QUOTA_OUTLIER_MIN = 0
@@ -146,7 +146,7 @@ RAGIONAMENTO_ANALISI = False            # ragionamento del modello (vedi llm.py)
 # PESO_MENZIONI è la quota del secondo: 0 = solo etichette, 0.5 = metà e metà, 1 = solo menzioni.
 # Si regola con il cursore nella barra laterale; questo è il valore di partenza.
 # Se results.csv non ha le menzioni neutre (versione precedente di main.py), si usano le sole etichette.
-PESO_MENZIONI = 0.20
+PESO_MENZIONI = 0.10
 
 SFONDO = "#050A1A"   # blu notte molto scuro (sfondo della mappa e dei grafici)
 COLORI_SENTIMENT = {
@@ -193,7 +193,7 @@ GUIDA_BORDO = "#24395F"
 GUIDA_ACCENTO = "#60A5FA"
 GUIDA_TITOLETTI = "#93C5FD"
 
-st.set_page_config(page_title="The Voice of Customer", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="The Voice of Customers", page_icon="🎯", layout="wide")
 
 # Le versioni recenti di Streamlit usano width="stretch" al posto di use_container_width
 _versione = tuple(int(p) for p in st.__version__.split(".")[:2] if p.isdigit())
@@ -1983,7 +1983,7 @@ tuning_hdbscan = st.sidebar.slider(
 )
 quota_outlier, probabilita_minima, distinzione_minima = calcola_parametri_tuning(tuning_hdbscan)
 info_outlier = st.sidebar.empty()  # qui sotto, a calcolo finito, parametri attivi e quota effettiva
-nascondi_outlier = st.sidebar.checkbox("Nascondi outlier", value=False)
+nascondi_outlier = st.sidebar.checkbox("Nascondi outlier", value=True)
 allinea_mappa = st.sidebar.checkbox(
     "🧲 Avvicina sulla mappa le etichette dello stesso cluster", value=False,
     disabled=spazio_umap,
@@ -2289,6 +2289,3 @@ if clic:
     nota_filtri = (f"Filtro attivo nell'app: escluse le menzioni con sentiment {', '.join(esclusi_sentiment)}"
                    if esclusi_sentiment else "")
     finestra_analisi(clic, df_filtrato, nota_filtri, chiave)
-    
-    #...
-    
