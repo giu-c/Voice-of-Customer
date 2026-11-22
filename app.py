@@ -2289,3 +2289,6 @@ if clic:
     nota_filtri = (f"Filtro attivo nell'app: escluse le menzioni con sentiment {', '.join(esclusi_sentiment)}"
                    if esclusi_sentiment else "")
     finestra_analisi(clic, df_filtrato, nota_filtri, chiave)
+    
+    #...
+    
