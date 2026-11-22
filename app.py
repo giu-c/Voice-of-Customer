@@ -193,7 +193,7 @@ GUIDA_BORDO = "#24395F"
 GUIDA_ACCENTO = "#60A5FA"
 GUIDA_TITOLETTI = "#93C5FD"
 
-st.set_page_config(page_title="The Voice of Customers", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="The Voice of Customer", page_icon="🎯", layout="wide")
 
 # Le versioni recenti di Streamlit usano width="stretch" al posto di use_container_width
 _versione = tuple(int(p) for p in st.__version__.split(".")[:2] if p.isdigit())
@@ -1860,7 +1860,7 @@ def qualita_per_cluster(distanze, cluster_id, pesi, mappa):
 # PAGINA
 # ============================================================
 
-st.title("🗣️​ Voice of Customers: costellazioni semantiche")
+st.title("🗣️​ Voice of Customer: costellazioni semantiche")
 
 # --- 1. Dati -------------------------------------------------
 file_dati = FILE_RISULTATI
