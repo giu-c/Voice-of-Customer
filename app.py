@@ -71,7 +71,7 @@ FILE_RISULTATI = "results.csv"            # risultato finale di main.py
 #   - 0   = struttura globale / nebulosa continua (vicinato ampio, punti distanziati, basso spread)
 #   - 50  = valore predefinito consigliato (i tre valori *_PREDEFINITO / *_PREDEFINITA)
 #   - 100 = costellazioni compatte / isole nette (vicinato stretto, punti raccolti, alto spread)
-UMAP_TUNING_PREDEFINITO = 95
+UMAP_TUNING_PREDEFINITO = 85
 
 # 1) Vicinato UMAP (n_neighbors): numero di etichette vicine considerate per costruire la mappa
 N_VICINI_TUNING_0 = 40
@@ -146,7 +146,7 @@ RAGIONAMENTO_ANALISI = False            # ragionamento del modello (vedi llm.py)
 # PESO_MENZIONI è la quota del secondo: 0 = solo etichette, 0.5 = metà e metà, 1 = solo menzioni.
 # Si regola con il cursore nella barra laterale; questo è il valore di partenza.
 # Se results.csv non ha le menzioni neutre (versione precedente di main.py), si usano le sole etichette.
-PESO_MENZIONI = 0.10
+PESO_MENZIONI = 0.35
 
 SFONDO = "#050A1A"   # blu notte molto scuro (sfondo della mappa e dei grafici)
 COLORI_SENTIMENT = {
