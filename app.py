@@ -98,7 +98,7 @@ SPAZIO_UMAP = "Coordinate UMAP 3D (euclidea)"
 SPAZIO_PREDEFINITO = SPAZIO_UMAP
 
 PARAMETRI_HDBSCAN = [(campioni, selezione) for campioni in (1, 2) for selezione in ("eom", "leaf")]
-HDBSCAN_TUNING_PREDEFINITO = 15
+HDBSCAN_TUNING_PREDEFINITO = 25
 
 # 1) % massima di menzioni che finisce tra gli outlier (taglio della coda dei micro-cluster)
 QUOTA_OUTLIER_MIN = 0
