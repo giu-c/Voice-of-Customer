@@ -914,7 +914,7 @@ def hover_etichetta(r):
     return "<br>".join([
         in_grande(f"<b>🪐 {html.escape(r.tema_cluster)}</b>", HOVER_DIM_TITOLO),
         SEPARATORE_HOVER,
-        in_grande(f"➡️ <b>{html.escape(r.etichetta)}</b>", HOVER_DIM_VOCE),
+        in_grande(f"🏷️​ <b>{html.escape(r.etichetta)}</b>", HOVER_DIM_VOCE),
         in_grande(f"🗣️ Menzioni: <b>{r.menzioni}</b>", HOVER_DIM_VOCE),
         riga_sentiment_hover(r.positivi, r.negativi, r.neutri, r.non_deducibili),
         f"⚖️ Saldo sentiment: <b>{saldo:+.0%}</b>",
@@ -1002,7 +1002,7 @@ def crea_mappa_3d(punti, colori):
             "hover": "<br>".join([
                 in_grande(f"<b>🪐 {html.escape(gruppo['tema_cluster'].iloc[0])}</b>", HOVER_DIM_TITOLO),
                 SEPARATORE_HOVER,
-                in_grande(f"➡️ <b>{len(gruppo)}</b>", HOVER_DIM_VOCE),
+                in_grande(f"🏷️​ <b>{len(gruppo)}</b>", HOVER_DIM_VOCE),
                 in_grande(f"🗣️ Menzioni: <b>{gruppo['menzioni'].sum()}</b>", HOVER_DIM_VOCE),
                 riga_sentiment_hover(gruppo["positivi"].sum(), gruppo["negativi"].sum(),
                                      gruppo["neutri"].sum(), gruppo["non_deducibili"].sum()),
