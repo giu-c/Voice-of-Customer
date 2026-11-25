@@ -2231,6 +2231,21 @@ with st.expander("📐 Qualità del clustering (quanto sono netti e coerenti i c
              "Separazione tra cluster rispetto alla dispersione interna. Non ha una scala assoluta: serve solo "
              "a confrontare impostazioni diverse sugli stessi dati. Più alto è meglio."),
         ]
+
+        validi = qualita_cluster.dropna(subset=["coesione"])
+        if not validi.empty:
+            coesione_pesata = float(np.average(validi["coesione"], weights=validi["menzioni"]))
+            coesione_semplice = float(validi["coesione"].mean())
+            tessere.append((
+                "Coesione semantica (3072d)",
+                decimale(coesione_pesata),
+                None,
+                None,
+                f"Somiglianza media al centroide sugli embedding completi, pesata per menzioni "
+                f"(media semplice tra cluster: {decimale(coesione_semplice)}; "
+                f"range: {decimale(validi['coesione'].min())}–{decimale(validi['coesione'].max())}).",
+    ))
+    
         st.html(tessere_qualita_html(tessere))
         st.markdown("**Cluster per cluster**")
         st.dataframe(
