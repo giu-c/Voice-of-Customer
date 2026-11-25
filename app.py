@@ -2231,8 +2231,6 @@ with st.expander("📐 Qualità del clustering (quanto sono netti e coerenti i c
              "Separazione tra cluster rispetto alla dispersione interna. Non ha una scala assoluta: serve solo "
              "a confrontare impostazioni diverse sugli stessi dati. Più alto è meglio."),
         ]
-
-    ))
     
         st.html(tessere_qualita_html(tessere))
         st.markdown("**Cluster per cluster**")
