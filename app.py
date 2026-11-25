@@ -2232,18 +2232,17 @@ with st.expander("📐 Qualità del clustering (quanto sono netti e coerenti i c
              "a confrontare impostazioni diverse sugli stessi dati. Più alto è meglio."),
         ]
 
-        validi = qualita_cluster.dropna(subset=["coesione"])
-        if not validi.empty:
-            coesione_pesata = float(np.average(validi["coesione"], weights=validi["menzioni"]))
-            coesione_semplice = float(validi["coesione"].mean())
+        dentro = cluster_id != -1
+        if spazio_umap and len(set(cluster_id[dentro].tolist())) >= 2:
+            dist_3072 = matrice_distanze(vettori, "coseno")
+            sil_3072 = silhouette_score(dist_3072[np.ix_(dentro, dentro)], cluster_id[dentro],
+                                        metric="precomputed")
             tessere.append((
-                "Coesione semantica (3072d)",
-                decimale(coesione_pesata),
-                None,
-                None,
-                f"Somiglianza media al centroide sugli embedding completi, pesata per menzioni "
-                f"(media semplice tra cluster: {decimale(coesione_semplice)}; "
-                f"range: {decimale(validi['coesione'].min())}–{decimale(validi['coesione'].max())}).",
+                "Silhouette (3072d)",
+                decimale(sil_3072),
+                *giudizio_silhouette(sil_3072),
+                "Verifica indipendente degli stessi cluster nello spazio embedding completo "
+                "(distanza del coseno), al netto della proiezione UMAP 3D.",
     ))
     
         st.html(tessere_qualita_html(tessere))
